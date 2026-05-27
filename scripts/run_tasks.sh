@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TASK_FILE="${1:?用法: $0 <task.json>}"
+ARCH_MAPPING_FILE="${SCRIPT_DIR}/../arch_mapping.json"
 
 # 顏色定義
 RED='\033[0;31m'
@@ -114,6 +115,114 @@ for ex in data.get('version_extract_examples', []):
 
     # 通用提取：匹配連續的版本號模式 x.y.z 或 x.y.z.w
     echo "$url" | grep -oP '\d+\.\d+\.\d+(?:\.\d+)?' | head -1
+}
+
+# ============================================================
+# 步驟 3b: 架構匹配驗證
+# ============================================================
+validate_arch_match() {
+    local src_url="$1"
+    local declared_arch="$2"
+    local mapping_file="$3"
+    local pkg_name="$4"
+
+    if [[ ! -f "$mapping_file" ]]; then
+        log_warn "架構映射表不存在: $mapping_file，跳過驗證"
+        return 0
+    fi
+
+    # 使用 python 進行映射表比對
+    local result
+    result=$(python3 -c "
+import json, re, sys
+
+url = sys.argv[1]
+declared = sys.argv[2]
+pkg = sys.argv[4]
+
+with open(sys.argv[3]) as f:
+    mapping = json.load(f)
+
+token_map = mapping.get('token_map', {})
+patterns = mapping.get('regex_patterns', [])
+
+matched_arches = set()
+unknown_tokens = []
+
+# 1. Token 匹配：掃描 URL 中出現的所有已知 token
+url_lower = url.lower()
+for token, linyaps_arch in token_map.items():
+    if token in url_lower:
+        if linyaps_arch is None:
+            # 已知但非支援架構（如 i386）→ 記為不匹配
+            matched_arches.add('__UNSUPPORTED__')
+            unknown_tokens.append(token)
+        else:
+            matched_arches.add(linyaps_arch)
+
+# 2. Regex pattern 匹配
+for p in patterns:
+    m = re.search(p['pattern'], url, re.IGNORECASE)
+    if m:
+        for g in m.groups():
+            if g:
+                g_lower = g.lower()
+                # 找到 map_to 中 key 不區分大小寫的匹配
+                for map_key in p['map_to']:
+                    if map_key.lower() == g_lower:
+                        matched_arches.add(p['map_to'][map_key])
+                        break
+
+# 判斷結果
+if not matched_arches:
+    print('STATUS=UNKNOWN')
+    print('URL_ARCHES=')
+elif '__UNSUPPORTED__' in matched_arches and all(a == '__UNSUPPORTED__' for a in matched_arches):
+    print('STATUS=MISMATCH')
+    print('URL_ARCHES=' + ','.join(sorted(unknown_tokens)))
+else:
+    matched_arches.discard('__UNSUPPORTED__')
+    url_arches_str = ','.join(sorted(matched_arches))
+    if declared in matched_arches:
+        print('STATUS=MATCH')
+        print('URL_ARCHES=' + url_arches_str)
+    else:
+        print('STATUS=MISMATCH')
+        print('URL_ARCHES=' + url_arches_str)
+" "$src_url" "$declared_arch" "$mapping_file" "$pkg_name" 2>/dev/null) || {
+        log_warn "架構驗證執行失敗（python 錯誤），跳過驗證"
+        return 0
+    }
+
+    eval "$result"
+
+    case "$STATUS" in
+        MATCH)
+            log_ok "架構驗證通過: URL 含架構(${URL_ARCHES}) → 宣告 arch(${declared_arch}) ✓"
+            return 0
+            ;;
+        MISMATCH)
+            log_err "架構不匹配: URL 含架構(${URL_ARCHES})，但宣告 arch 為 ${declared_arch}"
+            return 1
+            ;;
+        UNKNOWN)
+            log_warn "架構無法自動識別，請 LLM 分析:"
+            echo ""
+            echo "  ╔══════════════════════════════════════════════╗"
+            echo "  ║        LLM 架構分析請求                       ║"
+            echo "  ╠══════════════════════════════════════════════╣"
+            echo "  ║  包名:      ${pkg_name}"
+            echo "  ║  src_url:   ${src_url}"
+            echo "  ║  宣告 arch: ${declared_arch}"
+            echo "  ║                                              ║"
+            echo "  ║  請分析 src_url 中的架構特徵，與宣告 arch    ║"
+            echo "  ║  是否匹配。若不匹配請修正 tasks[].arch。     ║"
+            echo "  ╚══════════════════════════════════════════════╝"
+            echo ""
+            # UNKNOWN 狀態不阻斷，繼續執行
+            return 0
+            ;;
+    esac
 }
 
 # ============================================================
@@ -238,6 +347,14 @@ run_task() {
             RESULTS+=("$pkg_name: 失敗 (無法提取版本號)")
             return
         fi
+    fi
+
+    # 架構驗證
+    if ! validate_arch_match "$src_url" "$arch" "$ARCH_MAPPING_FILE" "$pkg_name"; then
+        log_err "架構不匹配，跳過任務 $pkg_name"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        RESULTS+=("$pkg_name: 失敗 (架構不匹配: URL 架構 vs 宣告 arch=${arch})")
+        return
     fi
 
     # 下載資源

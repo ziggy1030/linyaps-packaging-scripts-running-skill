@@ -89,6 +89,20 @@ user-invocable: true
 - 成功數 / 失敗數
 - 失敗任務的錯誤信息
 
+## 架構驗證
+
+腳本會自動驗證 `tasks[].src_url` 與 `tasks[].arch` 是否匹配：
+
+1. **映射表為主**：使用 `arch_mapping.json` 中的 token 映射表和 regex pattern
+   - Token 匹配：掃描 URL 中出現的已知架構關鍵字（如 `amd64`、`arm64`、`x86_64` 等）
+   - Regex 匹配：針對特定 URL 模式（如 `linux-deb-x64`、`_amd64.deb$` 等）
+   - 已知但不支援的架構（如 `i386`、`armhf`）也會被識別為不匹配
+2. **比對結果**：
+   - **MATCH** → 通過，繼續執行
+   - **MISMATCH** → 報錯並跳過該任務，計入失敗統計
+   - **UNKNOWN** → 映射表無法識別 URL 中的架構特徵，輸出 LLM 分析請求（不阻斷流程）
+3. **LLM 分析**：當映射表無法識別時，AI 收到包含 `pkgName`、`src_url`、`arch` 的分析請求，協助判斷架構是否正確
+
 ## 注意事項
 - `--build_tmp_dir` 參數並非所有項目都支援，**必須**先檢測 `pak_linyaps.sh` 中是否包含 `build_tmp_dir` 關鍵字再決定是否加入
 - 執行前確認 `pak_linyaps.sh` 有執行權限
