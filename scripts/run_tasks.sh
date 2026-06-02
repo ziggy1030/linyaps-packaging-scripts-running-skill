@@ -258,7 +258,7 @@ download_source() {
     fi
 
     log_info "下載: $url"
-    if curl -L --progress-bar -o "$dest_path" "$url"; then
+    if curl -L --progress-bar -o "$dest_path" "$url" >/dev/null; then
         log_ok "下載完成: $dest_path"
         echo "$dest_path"
     else
