@@ -22,7 +22,7 @@ user-invocable: true
   "global": {
     "projects_root": "/path/to/adapted/projects",
     "output_dir": "./output",
-    "build_tmp_dir": "",
+    "build_tmp_dir": "./build_cache",
     "src_dir": "./src"
   },
   "tasks": [
@@ -41,7 +41,7 @@ user-invocable: true
 |------|------|------|
 | `global.projects_root` | 是 | 已適配便捷打包的項目根目錄 |
 | `global.output_dir` | 否 | 輸出目錄，預設 `./output` |
-| `global.build_tmp_dir` | 否 | 構建緩存目錄，預設自動生成臨時目錄 |
+| `global.build_tmp_dir` | 否 | 構建緩存**根**目錄，每個 task 自動建立 `<pkgName>/` 子目錄；預設自動生成臨時目錄 |
 | `global.src_dir` | 否 | 原始資源下載目錄，預設 `./src` |
 | `tasks[].pkgName` | 是 | 包名，用於定位項目子目錄 |
 | `tasks[].src_url` | 是 | 原始資源下載地址 |
@@ -97,7 +97,7 @@ user-invocable: true
 |------|--------|------|
 | `--projects_root=<path>` | `./projects` | 項目根目錄 |
 | `--output_dir=<path>` | `./output` | 輸出目錄 |
-| `--build_tmp_dir=<path>` | (自動生成) | 構建緩存目錄 |
+| `--build_tmp_dir=<path>` | (自動生成) | 構建緩存根目錄，每個 task 自動建立 `<pkgName>/` 子目錄 |
 | `--src_dir=<path>` | `./src` | 原始資源下載目錄 |
 | `--config=<file.json>` | (無) | JSON 配置文件 (僅含 global 部分) |
 | `--output=<file.json>` | (自動生成) | 輸出 JSON 文件路徑 |
@@ -120,7 +120,7 @@ user-invocable: true
 ### 步驟 2: 初始化目錄
 - 建立 `src_dir`（原始資源目錄）
 - 建立 `output_dir`（輸出目錄）
-- 若 `build_tmp_dir` 為空，自動生成臨時目錄
+- 若 `build_tmp_dir` 為空，自動生成臨時目錄作為緩存根目錄
 
 ### 步驟 3: 下載原始資源
 對每個任務：
@@ -131,15 +131,16 @@ user-invocable: true
 對每個任務：
 1. 在 `projects_root` 下查找 `pkgName` 對應的項目目錄（匹配 `CI_ll_<pkgName>` 或直接匹配 `pkgName`）
 2. 確認項目目錄下存在 `pak_linyaps.sh`
-3. **檢測 `--build_tmp_dir` 支援**：在 `pak_linyaps.sh` 中搜尋 `build_tmp_dir` 關鍵字，若存在則在命令中包含該參數
-4. 生成打包命令：
+3. **建立 per-task 子緩存目錄**：在 `build_tmp_dir` 根目錄下建立 `<pkgName>/` 子目錄，每個任務使用獨立緩存
+4. **檢測 `--build_tmp_dir` 支援**：在 `pak_linyaps.sh` 中搜尋 `build_tmp_dir` 關鍵字，若存在則在命令中包含該參數（傳遞 per-task 子目錄路徑）
+5. 生成打包命令：
 ```bash
 ./pak_linyaps.sh \
   --linyaps_arch=<arch> \
   --origin_version=<orig_version> \
   --src_path="<src_path>" \
   --output_dir="<output_dir>" \
-  [--build_tmp_dir=<build_tmp_dir>]
+  [--build_tmp_dir=<build_tmp_dir>/<pkgName>]
 ```
 
 ### 步驟 5: 執行打包
@@ -169,5 +170,6 @@ user-invocable: true
 
 ## 注意事項
 - `--build_tmp_dir` 參數並非所有項目都支援，**必須**先檢測 `pak_linyaps.sh` 中是否包含 `build_tmp_dir` 關鍵字再決定是否加入
+- `global.build_tmp_dir` 是緩存**根**目錄，每個 task 會自動建立 `<pkgName>/` 子目錄（如 `./build_cache/com.opera.browser/`），避免任務間緩存衝突
 - 執行前確認 `pak_linyaps.sh` 有執行權限
 - 下載資源時注意處理重定向 URL（如 VS Code 的 update URL）

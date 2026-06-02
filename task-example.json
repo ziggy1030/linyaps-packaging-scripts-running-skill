@@ -2,7 +2,7 @@
   "global": {
     "projects_root": "/path/to/adapted/projects",
     "output_dir": "./output",
-    "build_tmp_dir": "",
+    "build_tmp_dir": "./build_cache",
     "src_dir": "./src"
   },
   "version_extract_examples": [

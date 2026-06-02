@@ -378,10 +378,15 @@ run_task() {
     local pak_script="$project_dir/pak_linyaps.sh"
     chmod +x "$pak_script"
 
+    # 每個任務使用獨立的子緩存目錄
+    local task_build_tmp_dir="${BUILD_TMP_DIR}/${pkg_name}"
+    mkdir -p "$task_build_tmp_dir"
+    log_info "任務緩存目錄: $task_build_tmp_dir"
+
     # 檢測 --build_tmp_dir 支援
     local build_tmp_arg=""
     if supports_build_tmp_dir "$pak_script"; then
-        build_tmp_arg="--build_tmp_dir=${BUILD_TMP_DIR}"
+        build_tmp_arg="--build_tmp_dir=${task_build_tmp_dir}"
         log_info "檢測到 --build_tmp_dir 支援"
     else
         log_info "該項目不支援 --build_tmp_dir，跳過該參數"
