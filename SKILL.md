@@ -49,8 +49,8 @@ user-invocable: true
 |------|------|------|
 | `global.projects_root` | 是* | 已適配便捷打包的項目根目錄；若同時設有 `projects_repo` 則以此路徑作為 Git 本地快取目錄 |
 | `global.projects_repo` | 否 | 打包腳本 Git 倉庫 URL；設有此值時自動執行 `git clone/pull` 同步，替代本地路徑方案 |
-| `global.output_dir` | 否 | 產出目錄，支援 `${tag}` 佔位符，預設 `./output` |
-| `global.data_dir` | 否 | 數據記錄目錄，支援 `${tag}` 佔位符，用於存放 Build Log CSV 等持久化文件 |
+| `global.output_dir` | 否 | 產出目錄，支援 `${tag}` 佔位符（**必須在步驟 1 解析為完整路徑**），預設 `./output` |
+| `global.data_dir` | 否 | 數據記錄目錄，支援 `${tag}` 佔位符（**必須在步驟 1 解析為完整路徑**），用於存放 Build Log CSV 等持久化文件 |
 | `global.build_tmp_dir` | 否 | 構建緩存**根**目錄，每個 task 自動建立 `<pkgName>/` 子目錄；預設自動生成臨時目錄 |
 | `global.src_dir` | 否 | 原始資源下載目錄，預設 `./src` |
 | `tasks[].pkgName` | 是 | 包名，用於定位項目子目錄；若僅提供此欄位而無 `src_url`/`arch`/`orig_version`，可配合 `scripts/query_upstream.sh` 自動查詢補全 |
@@ -60,7 +60,13 @@ user-invocable: true
 
 > **`*` 必填說明**：`projects_root` 在無 `projects_repo` 時為必填。若設有 `projects_repo`，則 `projects_root` 可為空，將由 Git 倉庫決定本地路徑（推導為 `projects_root=./projects`）。
 
-> **`${tag}` 變量解析**：所有含 `${tag}` 的 global 路徑變量（如 `output_dir`、`data_dir`）均替換為 `date +"%Y-%m-%d"` 的輸出值（例如 `${tag}` → `2026-06-10`）。
+> **`${tag}` 路徑即時解析規則（必須遵守）**
+> 配置中的路徑可能包含 `${tag}` 佔位符（例如 `/data/output/${tag}`）。
+> **你必須在步驟 1 載入配置後立即執行：**
+> 1. 運行 `date +"%Y-%m-%d"` 獲取當天日期（如 `2026-06-10`）
+> 2. 將所有含有 `${tag}` 的路徑替換為完整路徑（例如 `/data/output/${tag}` → `/data/output/2026-06-10`）
+> 3. **將解析後的完整路徑記錄下來**，後續所有步驟（2-9）均使用已解析的完整路徑
+> 4. **禁止**將 `${tag}` 原樣傳遞給 bash 命令、mkdir、curl 或其他工具——shell 會將其解析為空值
 
 ### 雙模式配置載入邏輯
 
@@ -266,7 +272,10 @@ echo "net.kuribo64.melonDS" | ./scripts/query_upstream.sh
    - inline 中缺失的字段 → 查找 `./agent-config.json` 中的同名 `global` 字段
    - 若 `projects_root` 為空且設有 `projects_repo` → 設定 `projects_root=./projects`，啟用 Git 方案
    - 若上述均無 → 使用對應字段的預設值
-2. **`${tag}` 變量解析**：所有含 `${tag}` 的 global 路徑變量替換為 `date +"%Y-%m-%d"` 的輸出值（如 `2026-06-10`）
+2. **`${tag}` 變量解析與路徑固化**：嚴格遵守上面「`${tag}` 路徑即時解析規則」：
+   - 運行 `date +"%Y-%m-%d"` 獲取實際日期
+   - 將所有含 `${tag}` 的 global 路徑變量替換為完整路徑
+   - **記錄最終路徑為此步驟的輸出**，後續步驟（2-9）不再回退到原始值
 3. **解析 `version_extract_examples`**：若 `agent-config.json` 中存在，載入版本提取規則列表
 4. **解析任務文件**（用戶提供的 JSON 或 CSV）：
    - JSON 格式直接解析提取 `tasks` 列表
@@ -344,7 +353,9 @@ cd <project_dir>
 
 ### 步驟 7.5: 任務狀態持久化（Build Log CSV）
 
-路徑：`data_dir/<tag>.buildLog.csv`（其中 `data_dir` 為已解析 `${tag}` 後的最終路徑）
+路徑：`<data_dir已解析值>/<tag>.buildLog.csv`
+   - `data_dir` 為步驟 1 中已解析 `${tag}` 後的完整路徑（例如 `/data/linyaps-CI-output/2026-06-10.log`）
+   - 在 bash 命令中直接使用完整路徑：`echo "pkgName^version^url^success" >> /data/linyaps-CI-output/2026-06-10.log/2026-06-10.buildLog.csv`
 
 每個任務完成後，將結果持久化寫入 build log CSV：
 
