@@ -328,6 +328,35 @@ echo "net.kuribo64.melonDS" | ./scripts/query_upstream.sh
    - **繼續處理下一個任務**（不阻斷整個流程）
 5. 找到項目後，確認目標目錄下存在 `pak_linyaps.sh`
 
+### 步驟 5.5: 前置項目驗證（檢測閘門）
+
+**必須在步驟 5 之後、步驟 6 之前執行此驗證。**
+
+根據任務的輸入類型選擇對應的呼叫方式：
+
+**場景 A：已有 JSON 任務文件**（來自步驟 1 解析的 JSON/CSV，或 `query_upstream.sh` 的輸出）
+```bash
+./scripts/validate_projects.sh \
+  --task-file=<task.json路徑> \
+  --projects-root=<projects_root解析後路徑> \
+  --output=<data_dir>/validate_result.json
+```
+
+**場景 B：自然語言輸入或僅有包名列表**（如用戶直接說「打包 opera 和 vscode」，或通過 `--pkg-name` 指定）
+```bash
+./scripts/validate_projects.sh \
+  --pkg-name=<逗號分隔的包名列表> \
+  --projects-root=<projects_root解析後路徑> \
+  --output=<data_dir>/validate_result.json
+```
+
+1. **執行檢測腳本**：根據輸入場景選擇上述對應命令，對所有包名進行項目完整度校驗
+2. **分支處理**：
+   - 退出碼 0（全部通過）→ 繼續執行步驟 6
+   - 退出碼 1（存在失敗）→ **立即終止打包流程**，輸出檢測結果表格，跳至步驟 8 輸出統計結論。**不得**繞過檢測結果自行繼續打包
+3. **驗證不通過的任務**已被檢測腳本標記為 NOT_FOUND 或 FAIL，這些任務**不得**進入步驟 6-7 的生成命令和打包流程
+4. 檢測腳本的 JSON 結果文件寫入 `data_dir/validate_result.json`，可作為後續審查存證
+
 ### 步驟 6: 生成打包命令
 
 為每個任務生成命令：
@@ -399,6 +428,7 @@ cd <project_dir>
 
 ## 約束
 
+- **打包入口唯一性**：所有打包操作**必須**通過項目目錄下的 `pak_linyaps.sh` 腳本執行，這是唯一合法的打包入口。**嚴禁**自行生成/改寫 `linglong.yaml` 或直接調用 `ll-builder`、`ll-pica` 等工具進行打包。若項目目錄下不存在 `pak_linyaps.sh`，應視為「項目未適配」並按步驟 5 的待初始化流程處理，而非自行手動打包。步驟 5.5 的前置項目驗證腳本 `scripts/validate_projects.sh` 是檢測閘門——驗證不通過的任務不得繼續打包
 - 執行前確保 `pak_linyaps.sh` 有執行權限（`chmod +x`）
 - `--build_tmp_dir` 參數必須先檢測腳本是否支援再決定是否加入命令
 - 如果多架構的版本不一致，優先使用 x86_64 架構的版本
