@@ -5,6 +5,21 @@ argument-hint: '<task.json|task.csv>'
 user-invocable: true
 ---
 
+> **⛔ 腳本路徑解析規則（重要）**  
+>   
+> **問題**：在 multica 等平台上執行時，當前工作目錄（CWD）可能不是本 SKILL 所在目錄，導致相對路徑 `scripts/xxx.sh` 無法正確解析。  
+> 
+> **解決方案**——執行任何腳本前，必須先解析 SKILL_ROOT：
+> 1. **SKILL_ROOT**：即本檔案（`SKILL.md`）所在的目錄。可使用 `dirname "$(realpath "$0")"` 或相對於 agent-config.json 的位置推導。
+> 2. **腳本目錄結構**：所有輔助腳本統一存放在 `<SKILL_ROOT>/scripts/` 目錄下：
+>    - `csv_to_json.sh` — CSV 轉 JSON 任務文件
+>    - `query_upstream.sh` — 上游信息查詢（調用 n8n API）
+>    - `run_tasks.sh` — 批量任務執行
+>    - `status_upload.sh` — 產物上傳與狀態回報
+>    - `validate_projects.sh` — 前置項目驗證
+> 3. **調用規則**：在 bash 命令中調用腳本時，統一使用 `bash <SKILL_ROOT>/scripts/<script_name>.sh` 格式（即補上 SKILL_ROOT 前綴），**禁止**使用 `./scripts/xxx.sh` 或純相對路徑 `scripts/xxx.sh`，以確保不論工作目錄為何都能正確找到腳本。
+> 4. **`agent-config.json`**：存放於 SKILL_ROOT 目錄（或 `for-multica/` 子目錄），以相對於 SKILL_ROOT 的路徑引用。
+
 # linyaps 便捷打包腳本自動執行
 
 ## 用途
@@ -53,7 +68,7 @@ user-invocable: true
 | `global.data_dir` | 否 | 數據記錄目錄，支援 `${tag}` 佔位符（**必須在步驟 1 解析為完整路徑**），用於存放 Build Log CSV 等持久化文件 |
 | `global.build_tmp_dir` | 否 | 構建緩存**根**目錄，每個 task 自動建立 `<pkgName>/` 子目錄；預設自動生成臨時目錄 |
 | `global.src_dir` | 否 | 原始資源下載目錄，預設 `./src` |
-| `tasks[].pkgName` | 是 | 包名，用於定位項目子目錄；若僅提供此欄位而無 `src_url`/`arch`/`orig_version`，可配合 `scripts/query_upstream.sh` 自動查詢補全 |
+| `tasks[].pkgName` | 是 | 包名，用於定位項目子目錄；若僅提供此欄位而無 `src_url`/`arch`/`orig_version`，可配合 `<SKILL_ROOT>/scripts/query_upstream.sh` 自動查詢補全 |
 | `tasks[].src_url` | 是 | 原始資源下載地址 |
 | `tasks[].arch` | 是 | 目標架構 (x86_64/arm64) |
 | `tasks[].orig_version` | 否 | 原始版本號，可從 src_url 自動提取 |
@@ -120,7 +135,7 @@ user-invocable: true
 
 ## CSV 任務文件格式
 
-除了 JSON 格式，也支持 CSV 格式導入任務。使用 `scripts/csv_to_json.sh` 腳本進行轉換和執行。
+除了 JSON 格式，也支持 CSV 格式導入任務。使用 `csv_to_json.sh` 腳本（位於 `<SKILL_ROOT>/scripts/`）進行轉換和執行。
 
 ### CSV 表頭
 
@@ -143,22 +158,22 @@ user-invocable: true
 
 ```bash
 # 基本用法：CSV 導入 + 預設配置
-./scripts/csv_to_json.sh tasks.csv --projects_root=/path/to/projects
+bash <SKILL_ROOT>/scripts/csv_to_json.sh tasks.csv --projects_root=/path/to/projects
 
 # 僅生成 JSON 不執行 (dry-run)
-./scripts/csv_to_json.sh tasks.csv --dry-run
+bash <SKILL_ROOT>/scripts/csv_to_json.sh tasks.csv --dry-run
 
 # 使用 JSON 配置文件提供 global 設定
-./scripts/csv_to_json.sh tasks.csv --config=global_config.json
+bash <SKILL_ROOT>/scripts/csv_to_json.sh tasks.csv --config=global_config.json
 
 # 完整參數
-./scripts/csv_to_json.sh tasks.csv \
+bash <SKILL_ROOT>/scripts/csv_to_json.sh tasks.csv \
   --projects_root=/path/to/projects \
   --output_dir=./output \
   --src_dir=./src
 
 # 向後兼容：直接使用 JSON 任務文件
-./scripts/csv_to_json.sh task.json
+bash <SKILL_ROOT>/scripts/csv_to_json.sh task.json
 ```
 
 ### 命令行參數
@@ -186,7 +201,7 @@ user-invocable: true
 
 ### 腳本位置
 
-scripts/query_upstream.sh
+位於 `<SKILL_ROOT>/scripts/query_upstream.sh`。
 
 ### API 字段映射
 
@@ -205,15 +220,15 @@ scripts/query_upstream.sh
 
 ```bash
 # 方式 1: 直接指定包名（支援逗號分隔多個包名）
-./scripts/query_upstream.sh --pkg-name=net.kuribo64.melonDS
-./scripts/query_upstream.sh --pkg-name=com.opera.browser,com.google.chrome
+bash <SKILL_ROOT>/scripts/query_upstream.sh --pkg-name=net.kuribo64.melonDS
+bash <SKILL_ROOT>/scripts/query_upstream.sh --pkg-name=com.opera.browser,com.google.chrome
 
 # 方式 2: 從文件讀取（支援 JSON 或純文本格式）
-./scripts/query_upstream.sh --task-file=task.json
-./scripts/query_upstream.sh --task-file=pkglist.txt
+bash <SKILL_ROOT>/scripts/query_upstream.sh --task-file=task.json
+bash <SKILL_ROOT>/scripts/query_upstream.sh --task-file=pkglist.txt
 
 # 方式 3: 管道輸入（每行一個包名）
-echo "net.kuribo64.melonDS" | ./scripts/query_upstream.sh
+echo "net.kuribo64.melonDS" | bash <SKILL_ROOT>/scripts/query_upstream.sh
 ```
 
 ### 合併 Global 配置
@@ -221,7 +236,7 @@ echo "net.kuribo64.melonDS" | ./scripts/query_upstream.sh
 可透過 `--global-config` 傳入 `agent-config.json`，合併輸出完整的任務 JSON：
 
 ```bash
-./scripts/query_upstream.sh \
+bash <SKILL_ROOT>/scripts/query_upstream.sh \
   --pkg-name=net.kuribo64.melonDS \
   --global-config=for-multica/agent-config.json \
   --output=full-tasks.json
@@ -256,7 +271,7 @@ echo "net.kuribo64.melonDS" | ./scripts/query_upstream.sh
 - 若輸入的 JSON 任務文件已包含完整的 `src_url`/`arch`/`orig_version`，腳本會直接透傳，**不會**重複查詢 API
 - API 不可達或返回錯誤時，腳本會記錄錯誤信息並繼續處理其他包名（不阻斷批量流程）
 - 支持透過 `--api-url=<url>` 覆蓋默認 API 地址
-- **禁止**使用 `fetch_webpage` 或瀏覽器工具自行爬取上游網站獲取版本/下載地址——上游信息必須通過 `query_upstream.sh` 調用 API 或任務 JSON 中已有的字段獲取
+- **禁止**使用 `fetch_webpage` 或瀏覽器工具自行爬取上游網站獲取版本/下載地址——上游信息必須通過 `<SKILL_ROOT>/scripts/query_upstream.sh` 調用 API 或任務 JSON 中已有的字段獲取
 
 ## 執行流程
 
@@ -274,7 +289,7 @@ echo "net.kuribo64.melonDS" | ./scripts/query_upstream.sh
 3. **解析 `version_extract_examples`**：若 `agent-config.json` 中存在，載入版本提取規則列表
 4. **解析任務文件**（用戶提供的 JSON 或 CSV）：
    - JSON 格式直接解析提取 `tasks` 列表
-   - CSV 格式先用 `scripts/csv_to_json.sh` 轉換為 JSON 再執行
+   - CSV 格式先用 `<SKILL_ROOT>/scripts/csv_to_json.sh` 轉換為 JSON 再執行
 
 ### 步驟 2: 初始化目錄與同步打包腳本倉庫
 
@@ -330,7 +345,7 @@ echo "net.kuribo64.melonDS" | ./scripts/query_upstream.sh
 
 **場景 A：已有 JSON 任務文件**（來自步驟 1 解析的 JSON/CSV，或 `query_upstream.sh` 的輸出）
 ```bash
-./scripts/validate_projects.sh \
+bash <SKILL_ROOT>/scripts/validate_projects.sh \
   --task-file=<task.json路徑> \
   --projects-root=<projects_root解析後路徑> \
   --output=<data_dir>/validate_result.json
@@ -338,7 +353,7 @@ echo "net.kuribo64.melonDS" | ./scripts/query_upstream.sh
 
 **場景 B：自然語言輸入或僅有包名列表**（如用戶直接說「打包 opera 和 vscode」，或通過 `--pkg-name` 指定）
 ```bash
-./scripts/validate_projects.sh \
+bash <SKILL_ROOT>/scripts/validate_projects.sh \
   --pkg-name=<逗號分隔的包名列表> \
   --projects-root=<projects_root解析後路徑> \
   --output=<data_dir>/validate_result.json
@@ -422,7 +437,7 @@ cd <project_dir>
 
 ## 約束
 
-- **打包入口唯一性**：所有打包操作**必須**通過項目目錄下的 `pak_linyaps.sh` 腳本執行，這是唯一合法的打包入口。**嚴禁**自行生成/改寫 `linglong.yaml` 或直接調用 `ll-builder`、`ll-pica` 等工具進行打包。若項目目錄下不存在 `pak_linyaps.sh`，應視為「項目未適配」並按步驟 5 的待初始化流程處理，而非自行手動打包。步驟 5.5 的前置項目驗證腳本 `scripts/validate_projects.sh` 是檢測閘門——驗證不通過的任務不得繼續打包
+- **打包入口唯一性**：所有打包操作**必須**通過項目目錄下的 `pak_linyaps.sh` 腳本執行，這是唯一合法的打包入口。**嚴禁**自行生成/改寫 `linglong.yaml` 或直接調用 `ll-builder`、`ll-pica` 等工具進行打包。若項目目錄下不存在 `pak_linyaps.sh`，應視為「項目未適配」並按步驟 5 的待初始化流程處理，而非自行手動打包。步驟 5.5 的前置項目驗證腳本 `<SKILL_ROOT>/scripts/validate_projects.sh` 是檢測閘門——驗證不通過的任務不得繼續打包
 - 執行前確保 `pak_linyaps.sh` 有執行權限（`chmod +x`）
 - `--build_tmp_dir` 參數必須先檢測腳本是否支援再決定是否加入命令
 - 如果多架構的版本不一致，優先使用 x86_64 架構的版本
