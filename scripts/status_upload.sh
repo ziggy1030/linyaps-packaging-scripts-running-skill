@@ -9,7 +9,7 @@
 # 參數說明：
 #   $1  linyapsPkgName  — 包名（對應 task.pkgName）
 #   $2  linyapsPkgArch  — 架構（對應 task.arch，如 x86_64、arm64）
-#   $3  pakStatus       — 打包狀態：passed（成功）或 failed（失敗）
+#   $3  pakStatus       — 打包狀態：non-verified（成功）或 failed（失敗）
 #   $4  filepath         — 構建產物文件完整路徑（成功時）；"null" 表示跳過上傳（失敗時）
 #   $5  upstreamVer      — 上游版本號（對應 task.orig_version）
 #   $6  linyapsPkgVer    — linyaps 包版本（一般同 upstreamVer）
@@ -17,7 +17,7 @@
 #
 # 範例：
 #   # 打包成功
-#   bash ./scripts/status_upload.sh com.opera.browser x86_64 passed \
+#   bash ./scripts/status_upload.sh com.opera.browser x86_64 non-verified \
 #     /data/output/2026-06-17/com.opera.browser_130.0.5847.92_x86_64.layer \
 #     130.0.5847.92 130.0.5847.92 https://download3.operacdn.com/.../opera-stable_130.0.5847.92_amd64.deb
 #
