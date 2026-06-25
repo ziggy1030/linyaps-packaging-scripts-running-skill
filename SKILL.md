@@ -16,6 +16,7 @@ user-invocable: true
 >    - `query_upstream.sh` — 上游信息查詢（調用 n8n API）
 >    - `run_tasks.sh` — 批量任務執行
 >    - `status_upload.sh` — 產物上傳與狀態回報
+>    - `status_upload_initOnly.sh` — 初始化後首次打包的產物上傳與狀態回報（`linyaps-init` 節點專用 webhook 端點）
 >    - `validate_projects.sh` — 前置項目驗證
 > 3. **調用規則**：在 bash 命令中調用腳本時，統一使用 `bash <SKILL_ROOT>/scripts/<script_name>.sh` 格式（即補上 SKILL_ROOT 前綴），**禁止**使用 `./scripts/xxx.sh` 或純相對路徑 `scripts/xxx.sh`，以確保不論工作目錄為何都能正確找到腳本。
 > 4. **`agent-config.json`**：存放於 SKILL_ROOT 目錄（或 `for-multica/` 子目錄），以相對於 SKILL_ROOT 的路徑引用。
