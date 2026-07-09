@@ -137,7 +137,8 @@ for task_type, task_list in tasks_by_type.items():
 ### Phase 3: 結果彙總
 
 - 合併各子 SKILL 的執行結果
-- 執行 `status_upload.sh` 上報狀態
+- 分類統計：成功數 / 失敗數 / 待初始化數（binary 項目找不到）/ 待源码初始化數（source 項目找不到）
+- 執行 `status_upload.sh` 上報狀態（若為初始化後首次打包，依來源類型使用 `status_upload_initOnly.sh`）
 - 輸出最終統計
 
 ## 約束
