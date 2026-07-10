@@ -76,23 +76,33 @@ User Task (JSON/CSV)
 │   ├── query_upstream.sh                   # Upstream info lookup
 │   ├── status_upload.sh                    # Artifact upload
 │   └── check-agent-status.sh               # Agent health check
+├── scripts-manifest.json                    # Script distribution map
 ├── skills/
 │   ├── config/
 │   │   └── arch_mapping.json               # URL arch keyword → linyaps arch
 │   ├── linglong-binary-runner/             # Binary packaging sub-skill
 │   │   ├── SKILL.md
 │   │   └── scripts/
+│   │       ├── common.sh                   # Shared library (copy)
 │   │       ├── run_tasks.sh                # Binary task executor
 │   │       └── validate_projects.sh        # Pre-flight check
-│   └── linglong-source-updater/            # Source compilation sub-skill
+│   ├── linglong-source-updater/            # Source compilation sub-skill
 │       ├── SKILL.md
 │       ├── scripts/
+│       │   ├── common.sh                   # Shared library (copy)
 │       │   ├── run_tasks.sh                # Source task executor (6 steps)
 │       │   ├── download-and-checksum.sh    # Download + sha256 + analysis
 │       │   ├── update-linglong-yaml.py     # Insert sources/build rules
 │       │   └── validate-linglong-yaml.py   # Dual-mode YAML validator
 │       └── references/
 │           └── manifests-for-yaml.md       # linglong.yaml field spec
+│   └── linyaps-multica-packer-dispatch/     # Multica dispatch sub-skill
+│       ├── SKILL.md
+│       └── scripts/
+│           ├── common.sh                   # Shared library (copy)
+│           ├── check-agent-status.sh        # Agent health check (copy)
+│           ├── detect_init_source.sh        # Init source detection
+│           └── dispatch.sh                 # Dispatch orchestrator
 ├── for-multica/
 │   ├── agent.md                            # Multica platform adapter
 │   └── agent-config.json                   # Multica config
@@ -112,7 +122,39 @@ User Task (JSON/CSV)
 | `skills/linglong-binary-runner/scripts/run_tasks.sh` | **Binary executor** — downloads sources, validates arch, runs `pak_linyaps.sh` per task |
 | `skills/linglong-source-updater/scripts/run_tasks.sh` | **Source executor** — 6-step pipeline (validate → download+checksum → update YAML → build → export) |
 | `skills/config/arch_mapping.json` | Maps URL arch keywords (`amd64`, `x64`, `aarch64`) to linyaps arch identifiers (`x86_64`, `arm64`) |
+| `scripts-manifest.json` | Script distribution map — tracks which skills carry copies of which root `scripts/` files |
 | `task-example.json` | Reference JSON task file with both binary and source task examples |
+
+---
+
+## Script Distribution
+
+The root [`scripts/`](scripts/) directory is the **authoritative source** for all shared
+utility scripts. Each skill under `skills/` maintains its own copies
+under its `<skill>/scripts/` directory to ensure **self-contained deployment** on the
+Multica platform, which only installs skill directories rather than the entire repo.
+
+> **Maintenance rule**: When updating a shared script in `scripts/`, the change must be
+> propagated to every skill that carries a copy. See [`scripts-manifest.json`](scripts-manifest.json)
+> for the complete mapping.
+
+| Script | Root (authoritative) | linglong-binary-runner | linglong-source-updater | linyaps-multica-packer-dispatch |
+|--------|:---:|:---:|:---:|:---:|
+| `common.sh` | ✅ | ✅ | ✅ | ✅ |
+| `csv_to_json.sh` | ✅ | — | — | — |
+| `query_upstream.sh` | ✅ | — | — | — |
+| `status_upload.sh` | ✅ | — | — | — |
+| `status_upload_initOnly.sh` | ✅ | — | — | — |
+| `verify_upload.sh` | ✅ | — | — | — |
+| `check-agent-status.sh` | ✅ | — | — | ✅ |
+
+### Per-Skill Script Inventory
+
+| Skill Path | Shared (copied from `scripts/`) | Private (skill-specific) |
+|------------|--------------------------------|--------------------------|
+| `skills/linglong-binary-runner/scripts/` | `common.sh` | `run_tasks.sh`, `validate_projects.sh` |
+| `skills/linglong-source-updater/scripts/` | `common.sh` | `run_tasks.sh`, `download-and-checksum.sh`, `update-linglong-yaml.py`, `validate-linglong-yaml.py` |
+| `skills/linyaps-multica-packer-dispatch/scripts/` | `common.sh`, `check-agent-status.sh` | `detect_init_source.sh`, `dispatch.sh` |
 
 ---
 

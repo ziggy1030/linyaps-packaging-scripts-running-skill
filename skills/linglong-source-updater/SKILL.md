@@ -18,7 +18,7 @@ user-invocable: false
 - YAML 更新腳本：`skills/linglong-source-updater/scripts/update-linglong-yaml.py`
 - 格式驗證腳本：`skills/linglong-source-updater/scripts/validate-linglong-yaml.py`
 - 字段規範參考：`skills/linglong-source-updater/references/manifests-for-yaml.md`
-- 共享庫：`scripts/common.sh`
+- 共享庫：`skills/linglong-source-updater/scripts/common.sh`
 - 架構映射：`skills/config/arch_mapping.json`
 
 ## 使用前提

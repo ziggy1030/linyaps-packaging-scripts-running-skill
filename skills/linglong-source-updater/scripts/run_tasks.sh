@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TASK_FILE="${1:?用法: $0 <task.json>}"
 CONFIG_FILE="${REPO_ROOT}/agent-config.json"
 
-source "$REPO_ROOT/scripts/common.sh"
+source "$SCRIPT_DIR/common.sh"
 
 check_python3
 

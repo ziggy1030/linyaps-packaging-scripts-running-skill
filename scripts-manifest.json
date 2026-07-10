@@ -1,0 +1,36 @@
+{
+  "version": "1",
+  "description": "脚本副本分布映射表。根级 scripts/ 是权威版本，各 skill 维护独立副本以确保 multica 平台自包含部署。",
+  "root_scripts": {
+    "path": "scripts/",
+    "entries": {
+      "common.sh": "共享函数库（被各 skill 的 run_tasks.sh source 引入）",
+      "csv_to_json.sh": "CSV → JSON 转换器",
+      "query_upstream.sh": "上游信息查询（n8n API）",
+      "status_upload.sh": "产物上传与 webhook 状态回报（常规）",
+      "status_upload_initOnly.sh": "产物上传与 webhook 状态回报（初始化后首次打包）",
+      "verify_upload.sh": "S3 上传验证",
+      "check-agent-status.sh": "Agent 健康检查（multica CLI）"
+    }
+  },
+  "skills": [
+    {
+      "name": "linglong-binary-runner",
+      "path": "skills/linglong-binary-runner/",
+      "shared_scripts": ["common.sh"],
+      "private_scripts": ["run_tasks.sh", "validate_projects.sh"]
+    },
+    {
+      "name": "linglong-source-updater",
+      "path": "skills/linglong-source-updater/",
+      "shared_scripts": ["common.sh"],
+      "private_scripts": ["run_tasks.sh", "download-and-checksum.sh", "update-linglong-yaml.py", "validate-linglong-yaml.py"]
+    },
+    {
+      "name": "linyaps-multica-packer-dispatch",
+      "path": "skills/linyaps-multica-packer-dispatch/",
+      "shared_scripts": ["common.sh", "check-agent-status.sh"],
+      "private_scripts": ["detect_init_source.sh", "dispatch.sh"]
+    }
+  ]
+}

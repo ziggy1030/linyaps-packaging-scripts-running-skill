@@ -13,7 +13,7 @@ user-invocable: false
 
 - 執行腳本：`skills/linglong-binary-runner/scripts/run_tasks.sh`
 - 驗證腳本：`skills/linglong-binary-runner/scripts/validate_projects.sh`
-- 共享庫：`scripts/common.sh`
+- 共享庫：`skills/linglong-binary-runner/scripts/common.sh`
 - 架構映射：`skills/config/arch_mapping.json`
 
 ## 輸入

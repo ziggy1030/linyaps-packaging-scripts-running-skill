@@ -76,23 +76,33 @@
 │   ├── query_upstream.sh                   # 上游信息查詢
 │   ├── status_upload.sh                    # 產物上傳
 │   └── check-agent-status.sh               # Agent 健康檢查
+├── scripts-manifest.json                    # 脚本副本分布映射表
 ├── skills/
 │   ├── config/
 │   │   └── arch_mapping.json               # URL 架構關鍵字 → linyaps arch
 │   ├── linglong-binary-runner/             # Binary 打包子 SKILL
 │   │   ├── SKILL.md
 │   │   └── scripts/
+│   │       ├── common.sh                   # 共享庫（副本）
 │   │       ├── run_tasks.sh                # Binary 任務執行器
 │   │       └── validate_projects.sh        # 前置檢測
-│   └── linglong-source-updater/            # Source 編譯子 SKILL
+│   ├── linglong-source-updater/            # Source 編譯子 SKILL
 │       ├── SKILL.md
 │       ├── scripts/
+│       │   ├── common.sh                   # 共享庫（副本）
 │       │   ├── run_tasks.sh                # Source 任務執行器（6 步驟）
 │       │   ├── download-and-checksum.sh    # 下載 + sha256 + 分析
 │       │   ├── update-linglong-yaml.py     # 插入 sources/build 規則
 │       │   └── validate-linglong-yaml.py   # 雙模式 YAML 驗證器
 │       └── references/
 │           └── manifests-for-yaml.md       # linglong.yaml 字段規範
+│   └── linyaps-multica-packer-dispatch/     # Multica 分發子 SKILL
+│       ├── SKILL.md
+│       └── scripts/
+│           ├── common.sh                   # 共享庫（副本）
+│           ├── check-agent-status.sh        # Agent 健康檢查（副本）
+│           ├── detect_init_source.sh        # 初始化來源檢測
+│           └── dispatch.sh                 # 分發編排器
 ├── for-multica/
 │   ├── agent.md                            # Multica 平台適配文檔
 │   └── agent-config.json                   # Multica 配置
@@ -112,7 +122,37 @@
 | `skills/linglong-binary-runner/scripts/run_tasks.sh` | **Binary 執行器** — 下載 → 架構驗證 → 執行 `pak_linyaps.sh` |
 | `skills/linglong-source-updater/scripts/run_tasks.sh` | **Source 執行器** — 6 步驟管線（驗證 → 下載校驗 → 更新 YAML → 構建 → 導出） |
 | `skills/config/arch_mapping.json` | URL 架構關鍵字（`amd64`、`x64`、`aarch64`）映射到 linyaps 架構（`x86_64`、`arm64`） |
+| `scripts-manifest.json` | 脚本副本分布映射表 — 记录各 skill 对根级 `scripts/` 中脚本的副本持有情况 |
 | `task-example.json` | JSON 任務文件範例，包含 binary 和 source 兩種類型 |
+
+---
+
+## 脚本副本分布
+
+根目录下的 [`scripts/`](scripts/) 是所有共享脚本的**权威来源**。各 skill 在各自
+`<skill>/scripts/` 目录下维护独立副本，以确保在 Multica 平台（仅安装 skill 目录而非整个仓库）
+上能够**自包含部署**。
+
+> **维护规则**：当根级 `scripts/` 中的共享脚本更新时，必须同步更新到所有持有副本的 skill。
+> 完整的映射关系见 [`scripts-manifest.json`](scripts-manifest.json)。
+
+| 脚本 | 根目录（权威） | linglong-binary-runner | linglong-source-updater | linyaps-multica-packer-dispatch |
+|--------|:---:|:---:|:---:|:---:|
+| `common.sh` | ✅ | ✅ | ✅ | ✅ |
+| `csv_to_json.sh` | ✅ | — | — | — |
+| `query_upstream.sh` | ✅ | — | — | — |
+| `status_upload.sh` | ✅ | — | — | — |
+| `status_upload_initOnly.sh` | ✅ | — | — | — |
+| `verify_upload.sh` | ✅ | — | — | — |
+| `check-agent-status.sh` | ✅ | — | — | ✅ |
+
+### 各 Skill 脚本清单
+
+| Skill 路径 | 共享脚本（从 `scripts/` 复制） | 私有脚本（skill 专用） |
+|------------|-------------------------------|------------------------|
+| `skills/linglong-binary-runner/scripts/` | `common.sh` | `run_tasks.sh`, `validate_projects.sh` |
+| `skills/linglong-source-updater/scripts/` | `common.sh` | `run_tasks.sh`, `download-and-checksum.sh`, `update-linglong-yaml.py`, `validate-linglong-yaml.py` |
+| `skills/linyaps-multica-packer-dispatch/scripts/` | `common.sh`, `check-agent-status.sh` | `detect_init_source.sh`, `dispatch.sh` |
 
 ---
 
