@@ -19,6 +19,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BINARY_RUNNER="$REPO_ROOT/skills/linglong-binary-runner/scripts/run_tasks.sh"
+SOURCE_RUNNER="$REPO_ROOT/skills/linglong-source-updater/scripts/run_tasks.sh"
 
 # ============================================================
 # 顏色定義
@@ -329,12 +332,73 @@ print(json.dumps(result, indent=2, ensure_ascii=False))
 }
 
 # ============================================================
+# 根據任務類型分派到對應的 run_tasks.sh
+# ============================================================
+dispatch_tasks() {
+    local json_file="$1"
+
+    local types
+    types=$(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+tasks = data.get('tasks', [])
+types = set(t.get('type', '') for t in tasks)
+print(' '.join(types))
+" "$json_file" 2>/dev/null)
+
+    local has_binary=false
+    local has_source=false
+    for t in $types; do
+        if [[ "$t" == "binary" ]]; then has_binary=true; fi
+        if [[ "$t" == "source" ]]; then has_source=true; fi
+    done
+
+    if [[ "$has_binary" == true && "$has_source" == false ]]; then
+        log_info "所有任務均為 binary 類型，調用 binary-runner"
+        bash "$BINARY_RUNNER" "$json_file"
+    elif [[ "$has_source" == true && "$has_binary" == false ]]; then
+        log_info "所有任務均為 source 類型，調用 source-updater"
+        bash "$SOURCE_RUNNER" "$json_file"
+    else
+        log_info "檢測到混合類型，拆分後分別調用"
+        local binary_json="/tmp/linyaps_binary_$$.json"
+        local source_json="/tmp/linyaps_source_$$.json"
+
+        python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+binary_tasks = [t for t in data['tasks'] if t.get('type') == 'binary']
+source_tasks = [t for t in data['tasks'] if t.get('type') == 'source']
+if binary_tasks:
+    with open(sys.argv[2], 'w') as f:
+        json.dump({'global': data.get('global', {}), 'tasks': binary_tasks}, f, indent=2, ensure_ascii=False)
+if source_tasks:
+    with open(sys.argv[3], 'w') as f:
+        json.dump({'global': data.get('global', {}), 'tasks': source_tasks}, f, indent=2, ensure_ascii=False)
+" "$json_file" "$binary_json" "$source_json"
+
+        if [[ -f "$binary_json" ]]; then
+            log_info "執行 binary 任務..."
+            bash "$BINARY_RUNNER" "$binary_json"
+            rm -f "$binary_json"
+        fi
+        if [[ -f "$source_json" ]]; then
+            log_info "執行 source 任務..."
+            bash "$SOURCE_RUNNER" "$source_json"
+            rm -f "$source_json"
+        fi
+    fi
+}
+
+# ============================================================
 # 直接傳遞 JSON 任務文件 (向後兼容)
 # ============================================================
 pass_through_json() {
     local json_file="$1"
     log_info "檢測到 JSON 格式，直接傳遞給 run_tasks.sh"
-    exec "${SCRIPT_DIR}/run_tasks.sh" "$json_file"
+    dispatch_tasks "$json_file"
 }
 
 # ============================================================
@@ -402,7 +466,7 @@ main() {
 
     # 執行打包任務
     log_info "調用 run_tasks.sh 執行打包..."
-    exec "${SCRIPT_DIR}/run_tasks.sh" "$OUTPUT_JSON"
+    dispatch_tasks "$OUTPUT_JSON"
 }
 
 main "$@"

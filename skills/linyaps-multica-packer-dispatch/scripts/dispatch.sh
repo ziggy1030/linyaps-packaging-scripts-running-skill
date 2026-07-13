@@ -17,6 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SKILL_ROOT/../../.." && pwd)"
 
+source "$SCRIPT_DIR/common.sh"
+
 ACTION="${1:-}"
 shift || true
 
@@ -49,7 +51,7 @@ while [[ $# -gt 0 ]]; do
     --pending=*)    PENDING_COUNT="${1#*=}" ;;
     --src-pending=*) SRC_PENDING_COUNT="${1#*=}" ;;
     *)
-      echo "未知参数: $1" >&2
+      log_err "未知参数: $1"
       exit 1
       ;;
   esac
@@ -132,14 +134,14 @@ except Exception:
 " 2>/dev/null) || AGENT_STATUS="unknown"
     fi
     if [[ "$AGENT_STATUS" == "idle" ]]; then
-      echo "[INFO] 目标智能体 ${TARGET_AGENT_ID} 空闲，可立即指派" >&2
+      log_info "目标智能体 ${TARGET_AGENT_ID} 空闲，可立即指派"
     elif [[ "$AGENT_STATUS" == "busy" || "$AGENT_STATUS" == "running" ]]; then
-      echo "[WARN] 目标智能体 ${TARGET_AGENT_ID} 当前繁忙，仍发起指派（由平台排队处理）" >&2
+      log_warn "目标智能体 ${TARGET_AGENT_ID} 当前繁忙，仍发起指派（由平台排队处理）"
     else
-      echo "[WARN] 无法查询目标智能体 ${TARGET_AGENT_ID} 状态（${AGENT_STATUS}），直接发起指派" >&2
+      log_warn "无法查询目标智能体 ${TARGET_AGENT_ID} 状态（${AGENT_STATUS}），直接发起指派"
     fi
   else
-    echo "[WARN] multica CLI 不可用，跳过状态检查" >&2
+    log_warn "multica CLI 不可用，跳过状态检查"
   fi
 
   # 指派执行
@@ -154,12 +156,12 @@ except Exception:
       [[ "$TYPE" == "source" ]] && TYPE_TAG="，類型：source"
       multica issue comment add "$ISSUE_ID" \
         --content "@${TARGET_AGENT_ID} 請為 ${PKG_NAME} 進行項目初始化適配工作（${ARCH}）。下載地址：${SRC_URL}${TYPE_TAG}" \
-        2>/dev/null && ASSIGNED=true || echo "[WARN] multica comment 发送失败" >&2
+        2>/dev/null && ASSIGNED=true || log_warn "multica comment 发送失败"
     else
-      echo "[WARN] 无法查询 ISSUE_ID，跳过指派" >&2
+      log_warn "无法查询 ISSUE_ID，跳过指派"
     fi
   else
-    echo "[WARN] multica CLI 不可用，跳过指派" >&2
+    log_warn "multica CLI 不可用，跳过指派"
   fi
 
   # 记录指派日志
@@ -209,7 +211,7 @@ JSON
 )"
 
 else
-  echo "未知 action: ${ACTION}" >&2
-  echo "可用 action: detect_init_source, dispatch_project_not_found, update_issue_status" >&2
+log_err "未知 action: ${ACTION}"
+  log_info "可用 action: detect_init_source, dispatch_project_not_found, update_issue_status"
   exit 1
 fi
