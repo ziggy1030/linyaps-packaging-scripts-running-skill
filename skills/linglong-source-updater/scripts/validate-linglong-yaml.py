@@ -160,8 +160,8 @@ def validate(path: str, allow_sources: bool = False) -> list:
     # 额外检查：build 段约束
     if isinstance(build_val, str):
         if allow_sources:
-            if "cd /project/linglong/sources/" not in build_val:
-                errors.append("build must contain 'cd /project/linglong/sources/' as first step")
+            if "cd /project/linglong/sources/" not in build_val and "SRC_ROOT" not in build_val:
+                errors.append("build must contain 'cd /project/linglong/sources/' or 'SRC_ROOT' as first step")
             if "touch ${PREFIX}/.linyaps_genius" not in build_val:
                 errors.append("build must contain 'touch ${PREFIX}/.linyaps_genius'")
             if "chmod -R 755 ${PREFIX}" not in build_val:

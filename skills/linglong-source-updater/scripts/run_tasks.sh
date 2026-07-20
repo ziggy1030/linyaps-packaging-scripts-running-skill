@@ -155,12 +155,11 @@ run_source_task() {
         return
     }
 
-    local dl_kind dl_url dl_digest dl_name dl_extracted_dir dl_commit
+    local dl_kind dl_url dl_digest dl_name dl_commit
     dl_kind=$(echo "$source_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['kind'])")
     dl_url=$(echo "$source_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['url'])")
     dl_digest=$(echo "$source_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('digest',''))")
     dl_name=$(echo "$source_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('name',''))")
-    dl_extracted_dir=$(echo "$source_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('extracted_dir',''))")
     dl_commit=$(echo "$source_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('commit',''))")
     log_ok "源碼分析完成: kind=$dl_kind, name=$dl_name"
 
@@ -170,8 +169,7 @@ run_source_task() {
         --kind=\"$dl_kind\" \
         --url=\"$dl_url\" \
         --digest=\"$dl_digest\" \
-        --name=\"$dl_name\" \
-        --extracted-dir=\"$dl_extracted_dir\""
+        --name=\"$dl_name\""
     if [[ -n "$dl_commit" ]]; then
         update_cmd="$update_cmd --commit=\"$dl_commit\""
     fi

@@ -4,7 +4,7 @@ update-linglong-yaml.py — 更新 linglong.yaml 补充上游源码信息和构�
 
 功能：
   1. 添加 sources 段 (archive/git/file/dsc)
-  2. build 段首行插入 cd 进入源码目录
+  2. build 段首行插入 cd 进入源码目录（archive/git/dsc 使用 ls -d 动态发现）
   3. 确保 build 末尾有 touch/chmod 指令
   4. 修正 ${prefix} → ${PREFIX}
 
@@ -14,8 +14,7 @@ update-linglong-yaml.py — 更新 linglong.yaml 补充上游源码信息和构�
         --kind archive \\
         --url https://example.com/src.tar.gz \\
         --digest sha256:abc123... \\
-        --name kate-src \\
-        --extracted-dir kate-25.04.3
+        --name kate-src
         [--commit <git-commit>]
 """
 
@@ -85,13 +84,9 @@ def ensure_build_suffix(build_text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_cd_command(kind: str, name: str, extracted_dir: str) -> str:
-    if kind == "archive":
-        return f"cd /project/linglong/sources/{name}/{extracted_dir}/"
-    elif kind == "git":
-        return f"cd /project/linglong/sources/{name}/"
-    elif kind == "dsc":
-        return f"cd /project/linglong/sources/{name}/"
+def build_cd_command(kind: str, name: str) -> str:
+    if kind in ("archive", "git", "dsc"):
+        return f"export SRC_ROOT=$(ls -d /project/linglong/sources/{name}/*)\ncd ${{SRC_ROOT}}"
     elif kind == "file":
         return None
 
@@ -113,7 +108,6 @@ def update_linglong_yaml(
     url: str,
     digest: str,
     name: str,
-    extracted_dir: str = None,
     commit: str = None,
     inplace: bool = True,
 ):
@@ -154,7 +148,7 @@ def update_linglong_yaml(
 
     build_text = fix_prefix_variables(str(build_text))
 
-    cd_cmd = build_cd_command(kind, name, extracted_dir)
+    cd_cmd = build_cd_command(kind, name)
     if cd_cmd:
         build_text = cd_cmd + "\n" + build_text
 
@@ -177,7 +171,6 @@ def main():
     parser.add_argument("--url", required=True, help="Upstream source URL")
     parser.add_argument("--digest", default="", help="sha256 digest (with or without 'sha256:' prefix)")
     parser.add_argument("--name", default="", help="Source name (directory name in linglong/sources/)")
-    parser.add_argument("--extracted-dir", default="", help="Top-level directory inside archive")
     parser.add_argument("--commit", default="", help="Git commit/tag/branch (git kind only)")
     parser.add_argument("--inplace", action="store_true", default=True,
                         help="Update file in-place (default: True)")
@@ -196,7 +189,6 @@ def main():
         url=args.url,
         digest=digest,
         name=args.name,
-        extracted_dir=args.extracted_dir,
         commit=args.commit,
         inplace=args.inplace,
     )

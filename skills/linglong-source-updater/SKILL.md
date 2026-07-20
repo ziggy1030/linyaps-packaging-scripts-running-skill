@@ -72,4 +72,5 @@ user-invocable: false
 - 輸入的 `linglong.yaml` 必須通過 validate 檢測（無 sources 段）
 - `build` 段必須包含 `touch ${PREFIX}/.linyaps_genius` 和 `chmod -R 755 ${PREFIX}`
 - `${PREFIX} 安裝目錄約束`：`build` 段中所有安裝目錄參數出現 `/usr` 或 `/usr/local` 絕對路徑均為錯誤（如 `--prefix=/usr`、`--libdir=/usr/lib`、`-DCMAKE_INSTALL_LIBDIR=/usr/lib`、`QMAKE_INSTALL_PREFIX=/usr`），必須以 `${PREFIX}` 替代；系統命令中的 `/usr` 除外
-- `build` 第一個步驟必須 `cd` 進入 `/project/linglong/sources/` 下的子目錄
+- `build` 第一个步骤必须进入源码目录，使用 `export SRC_ROOT=$(ls -d /project/linglong/sources/<name>/*)` 动态发现后 `cd ${SRC_ROOT}`（适用于 archive/git/dsc）。`<name>` 对应 sources 段的 `name` 属性。
+> 参考示例：`examples/CI_ll_org.mamedev.mamedev.linglong.yaml` L132-L134
