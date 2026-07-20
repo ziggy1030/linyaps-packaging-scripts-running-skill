@@ -1,16 +1,33 @@
 {
+  "global": {
+    "projects_root": "/path/to/projects",
+    "output_dir": "./output",
+    "build_tmp_dir": "./build_cache",
+    "src_dir": "./src"
+  },
   "tasks": [
     {
       "pkgName": "com.opera.browser",
+      "type": "binary",
       "src_url": "https://download3.operacdn.com/pub/opera/desktop/130.0.5847.92/linux/opera-stable_130.0.5847.92_amd64.deb",
       "arch": "x86_64",
       "orig_version": "130.0.5847.92"
     },
     {
       "pkgName": "com.visualstudio.code",
+      "type": "binary",
       "src_url": "https://update.code.visualstudio.com/latest/linux-deb-x64/stable",
       "arch": "x86_64",
       "orig_version": ""
+    },
+    {
+      "pkgName": "com.example.sourceapp",
+      "type": "source",
+      "src_url": "https://example.com/sourceapp-2.0.tar.gz",
+      "arch": "x86_64",
+      "orig_version": "2.0",
+      "kind": "archive",
+      "name": "src"
     }
   ]
 }

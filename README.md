@@ -2,22 +2,24 @@ English | **[中文](README.zh-CN.md)**
 
 # linyaps Packaging Runner
 
-Automated task orchestration for [linyaps](https://www.linyaps.org.cn/) (琥珀) packaging scripts. This tool reads task definitions from **JSON** or **CSV** files, downloads upstream sources, locates pre-adapted packaging projects, and executes `pak_linyaps.sh` build commands in batch.
+Automated task orchestration for [linyaps](https://www.linyaps.org.au/) packaging. Reads task definitions from **JSON** or **CSV** files and dispatches them to the appropriate sub-skill — **binary** tasks use `pak_linyaps.sh` for pre-adapted projects; **source** tasks use `ll-builder build` + `ll-builder export` for source-compiled projects.
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
+- [Architecture Overview](#architecture-overview)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
 - [Task File Formats](#task-file-formats)
   - [JSON Format](#json-format)
   - [CSV Format](#csv-format)
+- [Task Types](#task-types)
+  - [Binary (default)](#binary-default)
+  - [Source](#source)
 - [Command-Line Reference](#command-line-reference)
   - [csv_to_json.sh](#csv_to_jsonsh)
-  - [run_tasks.sh](#run_taskssh)
 - [Execution Flow](#execution-flow)
 - [Architecture Validation](#architecture-validation)
-- [Demo Files](#demo-files)
 - [Troubleshooting](#troubleshooting)
 - [Notes](#notes)
 
@@ -31,40 +33,86 @@ Automated task orchestration for [linyaps](https://www.linyaps.org.cn/) (琥珀)
 | `python3` | JSON parsing, CSV conversion, architecture validation |
 | `curl` | Downloading upstream source packages |
 | `jq` (optional) | Human-readable JSON inspection |
+| `ll-builder` | Source-compiled tasks only |
+| `python3-ruamel.yaml` | Source tasks: linglong.yaml update |
+| `python3-yaml` | Source tasks: YAML validation |
+
+## Architecture Overview
+
+```
+User Task (JSON/CSV)
+    │
+    ▼
+┌─────────────────────────────────────┐
+│  agents/linyaps-packaging-runner    │  ← Agent entry (dispatch logic)
+│  ├─ reads agent-config.json         │
+│  ├─ groups tasks by type            │
+│  └─ dispatches to sub-skill         │
+└──────────┬──────────────────────────┘
+       type│                    type
+    ┌──────┴──────┐      ┌──────┴──────┐
+    │ binary      │      │ source      │
+    │ (or unset)  │      │             │
+    ▼             ▼      ▼             ▼
+┌──────────────────┐ ┌──────────────────────┐
+│ linglong-binary- │ │ linglong-source-     │
+│ runner           │ │ updater              │
+│                  │ │                      │
+│ pak_linyaps.sh   │ │ ll-builder build     │
+│                  │ │ ll-builder export    │
+└──────────────────┘ └──────────────────────┘
+```
 
 ## Project Structure
 
 ```
 .
-├── SKILL.md                  # Skill definition for AI agent integration
-├── README.md                 # This file (English)
-├── README.zh-CN.md           # Chinese version
-├── task-example.json         # Example JSON task file
-├── arch_mapping.json         # Architecture keyword → linyaps arch mapping
+├── agents/
+│   └── linyaps-packaging-runner.agent.md   # Agent entry point
+├── agent-config.json                       # Global configuration
 ├── scripts/
-│   ├── csv_to_json.sh        # CSV-to-JSON converter & unified entry point
-│   └── run_tasks.sh          # Core task executor (JSON-based)
-└── demo-files/
-    ├── taskInfo.example.csv               # Example CSV (2 tasks)
-    ├── Upstream_20260528133849.csv        # Real-world CSV (9 tasks)
-    ├── CI_ll_com.opera.browser/           # Demo: Opera packaging project
-    │   ├── pak_linyaps.sh
-    │   ├── scripts/
-    │   └── templates/
-    └── CI_ll_com.visualstudio.code/       # Demo: VS Code packaging project
-        ├── pak_linyaps.sh
-        ├── src/
-        └── templates/
+│   ├── common.sh                           # Shared library (14 functions)
+│   ├── csv_to_json.sh                      # CSV-to-JSON converter & unified entry
+│   ├── query_upstream.sh                   # Upstream info lookup
+│   ├── status_upload.sh                    # Artifact upload
+│   └── check-agent-status.sh               # Agent health check
+├── skills/
+│   ├── config/
+│   │   └── arch_mapping.json               # URL arch keyword → linyaps arch
+│   ├── linglong-binary-runner/             # Binary packaging sub-skill
+│   │   ├── SKILL.md
+│   │   └── scripts/
+│   │       ├── run_tasks.sh                # Binary task executor
+│   │       └── validate_projects.sh        # Pre-flight check
+│   └── linglong-source-updater/            # Source compilation sub-skill
+│       ├── SKILL.md
+│       ├── scripts/
+│       │   ├── run_tasks.sh                # Source task executor (6 steps)
+│       │   ├── download-and-checksum.sh    # Download + sha256 + analysis
+│       │   ├── update-linglong-yaml.py     # Insert sources/build rules
+│       │   └── validate-linglong-yaml.py   # Dual-mode YAML validator
+│       └── references/
+│           └── manifests-for-yaml.md       # linglong.yaml field spec
+├── for-multica/
+│   ├── agent.md                            # Multica platform adapter
+│   └── agent-config.json                   # Multica config
+├── example/                                # Example projects & generators
+├── task-example.json                       # Reference JSON (binary + source)
+└── REFACTOR-PLAN.md                        # Architecture design doc
 ```
 
 ### Key Files Explained
 
 | File | Description |
 |------|-------------|
-| `scripts/csv_to_json.sh` | **Unified entry point** — accepts both CSV and JSON task files. Converts CSV to JSON, then delegates to `run_tasks.sh`. |
-| `scripts/run_tasks.sh` | Core executor — parses JSON tasks, downloads sources, validates architectures, and runs `pak_linyaps.sh` for each task. |
-| `arch_mapping.json` | Maps URL architecture keywords (e.g., `amd64`, `x64`, `aarch64`) to linyaps architecture identifiers (`x86_64`, `arm64`). |
-| `task-example.json` | Reference JSON task file with `version_extract_examples` for automatic version extraction. |
+| `agents/linyaps-packaging-runner.agent.md` | **Agent entry** — reads config, groups tasks by `type`, dispatches to sub-skills |
+| `agent-config.json` | Global config: `projects_root`, `output_dir`, `build_tmp_dir`, `src_dir` |
+| `scripts/csv_to_json.sh` | **Unified entry point** — accepts CSV or JSON, converts CSV to JSON, triggers agent dispatch |
+| `scripts/common.sh` | Shared library used by all sub-skill scripts (colored output, parse_json, download, arch validation, etc.) |
+| `skills/linglong-binary-runner/scripts/run_tasks.sh` | **Binary executor** — downloads sources, validates arch, runs `pak_linyaps.sh` per task |
+| `skills/linglong-source-updater/scripts/run_tasks.sh` | **Source executor** — 6-step pipeline (validate → download+checksum → update YAML → build → export) |
+| `skills/config/arch_mapping.json` | Maps URL arch keywords (`amd64`, `x64`, `aarch64`) to linyaps arch identifiers (`x86_64`, `arm64`) |
+| `task-example.json` | Reference JSON task file with both binary and source task examples |
 
 ---
 
@@ -76,19 +124,21 @@ Automated task orchestration for [linyaps](https://www.linyaps.org.cn/) (琥珀)
 # 1. Prepare a CSV file with headers: 记录ID,包名,架构,版本,网站地址,下载地址
 
 # 2. Preview the generated JSON (dry-run mode)
-./scripts/csv_to_json.sh demo-files/taskInfo.example.csv --dry-run
+./scripts/csv_to_json.sh my-tasks.csv --dry-run
 
 # 3. Execute packaging with your adapted projects
-./scripts/csv_to_json.sh demo-files/taskInfo.example.csv \
+./scripts/csv_to_json.sh my-tasks.csv \
   --projects_root=/path/to/adapted/projects
 ```
 
 ### Using a JSON file
 
 ```bash
-# Direct execution with a JSON task file
-./scripts/run_tasks.sh task-example.json
+# Direct execution with a JSON task file containing type=binary tasks
+./scripts/csv_to_json.sh task-example.json
 ```
+
+> **Note:** Starting directly with `csv_to_json.sh` is backward compatible — it detects JSON files and passes them through.
 
 ---
 
@@ -101,45 +151,56 @@ A JSON task file contains a `global` configuration block and a `tasks` array:
 ```json
 {
   "global": {
-    "projects_root": "/path/to/adapted/projects",
+    "projects_root": "/path/to/projects",
     "output_dir": "./output",
-    "build_tmp_dir": "",
+    "build_tmp_dir": "./build_cache",
     "src_dir": "./src"
   },
   "tasks": [
     {
       "pkgName": "com.opera.browser",
+      "type": "binary",
       "src_url": "https://download3.operacdn.com/pub/opera/desktop/130.0.5847.92/linux/opera-stable_130.0.5847.92_amd64.deb",
       "arch": "x86_64",
       "orig_version": "130.0.5847.92"
+    },
+    {
+      "pkgName": "com.example.sourceapp",
+      "type": "source",
+      "src_url": "https://example.com/sourceapp-2.0.tar.gz",
+      "arch": "x86_64",
+      "orig_version": "2.0",
+      "kind": "archive",
+      "name": "src"
     }
   ]
 }
 ```
 
-#### Field Descriptions
-
-**Global Configuration:**
+#### Global Configuration
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `projects_root` | **Yes** | — | Root directory containing adapted packaging projects |
 | `output_dir` | No | `./output` | Directory for build outputs |
-| `build_tmp_dir` | No | *(auto-generated)* | Build cache directory; if empty, a temp directory is created |
+| `build_tmp_dir` | No | *(auto-generated)* | Build cache directory |
 | `src_dir` | No | `./src` | Directory for downloaded source packages |
 
-**Task Entry:**
+#### Task Entry Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `pkgName` | **Yes** | Package name, used to locate the matching project directory (e.g., `com.opera.browser`) |
+| `pkgName` | **Yes** | Package name, used to locate project directory (e.g., `com.opera.browser`) |
+| `type` | No | Task type: `binary` (default) or `source` |
 | `src_url` | **Yes** | Upstream source download URL |
 | `arch` | **Yes** | Target architecture: `x86_64` or `arm64` |
-| `orig_version` | No | Upstream version string; if empty, auto-extracted from `src_url` |
+| `orig_version` | No | Upstream version string; auto-extracted from `src_url` if empty |
+| `kind` | Source only | Source kind: `archive`, `git`, `file`, `dsc` (default: `archive`) |
+| `name` | Source only | Source name field in linglong.yaml `sources` entry (default: `src`) |
 
 **Optional: Version Extraction Patterns** (top-level `version_extract_examples`):
 
-When `orig_version` is empty, the script tries to match the `src_url` against these patterns to extract the version number automatically. See `task-example.json` for examples.
+When `orig_version` is empty, the script matches `src_url` against these regex patterns to extract the version automatically. See `agent-config.json` for examples.
 
 ---
 
@@ -158,24 +219,18 @@ CSV files must use UTF-8 encoding with the following header row:
 | `记录ID` | *(ignored)* | No | Reference ID, not used |
 | `包名` | `pkgName` | **Yes** | Package name for project directory lookup |
 | `架构` | `arch` | **Yes** | Target architecture (`x86_64` / `arm64`) |
-| `版本` | `orig_version` | No | Upstream version; if empty, auto-extracted from URL |
+| `版本` | `orig_version` | No | Upstream version; auto-extracted from URL if empty |
 | `网站地址` | *(ignored)* | No | Project homepage, not used |
 | `下载地址` | `src_url` | **Yes** | Upstream source download URL |
 
-#### Example CSV
-
-```csv
-记录ID,包名,架构,版本,网站地址,下载地址
-1cea051c-...,com.jetbrains.www.pycharm,x86_64,2026.1.2,https://data.services.jetbrains.com/...,https://rustfsadmin.../com.jetbrains.www.pycharm_x86_64_2026.1.2.tar.gz
-c7c2946f-...,org.mozilla.firefox-nal,x86_64,151.0.2,https://www.firefox.com/zh-CN/,https://rustfsadmin.../org.mozilla.firefox-nal_x86_64_151.0.2.tar.xz
-```
+> **Note:** CSV tasks are treated as `type=binary` by default. For source tasks, use JSON format with `"type": "source"`.
 
 #### Data Cleaning
 
 The converter automatically handles:
-- **Whitespace trimming**: Leading/trailing spaces and tabs are removed from all fields
-- **Header aliases**: Both simplified (下载地址) and traditional (下載地址) Chinese headers are accepted
-- **Row skipping**: Rows missing required fields (`包名`, `下载地址`, `架构`) are silently skipped
+- **Whitespace trimming**: Leading/trailing spaces and tabs removed
+- **Header aliases**: Both simplified (下载地址) and traditional (下載地址) Chinese headers accepted
+- **Row skipping**: Rows missing required fields silently skipped
 
 #### Global Configuration for CSV
 
@@ -185,24 +240,12 @@ Since CSV files have no `global` section, configuration is provided via:
    ```bash
    ./scripts/csv_to_json.sh tasks.csv \
      --projects_root=/path/to/projects \
-     --output_dir=./output \
-     --src_dir=./src
+     --output_dir=./output
    ```
 
 2. **JSON config file** (`--config`):
    ```bash
    ./scripts/csv_to_json.sh tasks.csv --config=global_config.json
-   ```
-   Where `global_config.json` contains only the `global` section:
-   ```json
-   {
-     "global": {
-       "projects_root": "/path/to/projects",
-       "output_dir": "./output",
-       "build_tmp_dir": "",
-       "src_dir": "./src"
-     }
-   }
    ```
 
 3. **Default values** (lowest priority):
@@ -210,8 +253,28 @@ Since CSV files have no `global` section, configuration is provided via:
    |-----------|---------|
    | `projects_root` | `./projects` |
    | `output_dir` | `./output` |
-   | `build_tmp_dir` | *(auto-generated temp dir)* |
+   | `build_tmp_dir` | *(auto-generated)* |
    | `src_dir` | `./src` |
+
+---
+
+## Task Types
+
+### Binary (default)
+
+- **Entry point**: `pak_linyaps.sh`
+- **Scope**: Pre-adapted packaging projects (project directory contains `pak_linyaps.sh` + `templates/linglong.yaml`)
+- **Sub-skill**: `linglong-binary-runner`
+- **Execution**: Download source → validate arch → locate project → run `pak_linyaps.sh`
+- **Constraint**: Must NOT modify `linglong.yaml` or call `ll-builder` directly
+
+### Source
+
+- **Entry point**: `ll-builder build` + `ll-builder export`
+- **Scope**: Source projects with a `linglong.yaml` (but no `pak_linyaps.sh`)
+- **Sub-skill**: `linglong-source-updater`
+- **Execution**: 6-step pipeline — validate → download+checksum → update YAML → validate output → build → export
+- **Constraint**: Input `linglong.yaml` must pass pre-validation (no `sources` section); build rules must use `${PREFIX}` paths
 
 ---
 
@@ -219,7 +282,7 @@ Since CSV files have no `global` section, configuration is provided via:
 
 ### csv_to_json.sh
 
-**Unified entry point** — accepts both CSV and JSON files.
+**Unified entry point** — accepts both CSV and JSON files, converts CSV to JSON, then triggers the agent dispatch flow.
 
 ```
 ./scripts/csv_to_json.sh <task.csv|task.json> [options]
@@ -237,46 +300,55 @@ Since CSV files have no `global` section, configuration is provided via:
 | `--help` | — | Show usage information |
 
 **Behavior by file type:**
-- **CSV input** → Converts to JSON → Executes via `run_tasks.sh`
-- **JSON input** → Passes directly to `run_tasks.sh` (backward compatible)
-
-### run_tasks.sh
-
-**Core executor** — processes JSON task files directly.
-
-```
-./scripts/run_tasks.sh <task.json>
-```
-
-This script is called internally by `csv_to_json.sh` but can also be used standalone with a JSON task file.
+- **CSV input** → Converts to JSON → Agent dispatches tasks by type
+- **JSON input** → Passes through directly to agent dispatch
 
 ---
 
 ## Execution Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  1. Parse Task File                                         │
-│     CSV → csv_to_json.sh → JSON                             │
+┌──────────────────────────────────────────────────────────────┐
+│  1. Load Configuration                                       │
+│     agent-config.json → global settings + version patterns   │
+├──────────────────────────────────────────────────────────────┤
+│  2. Parse & Initialize                                       │
+│     CSV → csv_to_json.sh → JSON                              │
 │     JSON → direct use                                        │
-├─────────────────────────────────────────────────────────────┤
-│  2. Initialize Directories                                  │
-│     Create: src_dir, output_dir, build_tmp_dir              │
-├─────────────────────────────────────────────────────────────┤
-│  3. For Each Task:                                          │
-│     ┌───────────────────────────────────────────────────┐   │
-│     │ 3a. Extract version from URL (if not provided)    │   │
-│     │ 3b. Validate architecture (URL vs declared arch)  │   │
-│     │ 3c. Download source package to src_dir            │   │
-│     │ 3d. Locate project directory in projects_root     │   │
-│     │     (matches CI_ll_<pkgName> or <pkgName>)        │   │
-│     │ 3e. Detect --build_tmp_dir support                │   │
-│     │ 3f. Execute pak_linyaps.sh with generated args    │   │
-│     └───────────────────────────────────────────────────┘   │
-├─────────────────────────────────────────────────────────────┤
-│  4. Output Summary                                          │
-│     Total / Success / Fail counts + per-task details        │
-└─────────────────────────────────────────────────────────────┘
+│     Create: src_dir, output_dir, build_tmp_dir               │
+├──────────────────────────────────────────────────────────────┤
+│  3. Dispatch by Type (Agent Phase)                           │
+│     ┌──────────────────────────────────────────────────┐     │
+│     │ Group tasks by tasks[].type (default: "binary")   │     │
+│     │ Write subtask JSON for each group                  │     │
+│     │ Call sub-skill:                                     │     │
+│     │   binary → linglong-binary-runner                  │     │
+│     │   source → linglong-source-updater                 │     │
+│     └──────────────────────────────────────────────────┘     │
+├──────────────────────────────────────────────────────────────┤
+│  4. Binary Execution (per task)                              │
+│     ┌──────────────────────────────────────────────────┐     │
+│     │ a. Extract version from URL (if empty)            │     │
+│     │ b. Validate architecture (URL vs declared arch)   │     │
+│     │ c. Download source package                        │     │
+│     │ d. Locate project (CI_ll_<pkgName> / <pkgName>)  │     │
+│     │ e. Detect --build_tmp_dir support                 │     │
+│     │ f. Execute pak_linyaps.sh                         │     │
+│     └──────────────────────────────────────────────────┘     │
+├──────────────────────────────────────────────────────────────┤
+│  5. Source Execution (6 steps per task)                      │
+│     ┌──────────────────────────────────────────────────┐     │
+│     │ S-1: Validate input linglong.yaml (no sources)    │     │
+│     │ S-2: Download + sha256 + directory analysis       │     │
+│     │ S-3: Insert sources + fix build rules in YAML     │     │
+│     │ S-4: Validate output linglong.yaml (has sources)  │     │
+│     │ S-5: ll-builder build                             │     │
+│     │ S-6: ll-builder export → move .layer to output    │     │
+│     └──────────────────────────────────────────────────┘     │
+├──────────────────────────────────────────────────────────────┤
+│  6. Output Summary                                           │
+│     Total / Success / Fail counts + per-task details         │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 Each task produces a log file at `<output_dir>/<pkgName>.log`.
@@ -315,41 +387,6 @@ Before downloading, the script validates that the architecture declared in the t
 
 ---
 
-## Demo Files
-
-The `demo-files/` directory contains ready-to-use examples:
-
-### taskInfo.example.csv
-
-A minimal CSV with 2 tasks:
-- `com.jetbrains.www.pycharm` — PyCharm (x86_64)
-- `org.mozilla.firefox-nal` — Firefox (x86_64)
-
-### Upstream_20260528133849.csv
-
-A real-world CSV with 9 tasks covering browsers, media players, and development tools.
-
-### CI_ll_com.opera.browser
-
-A fully adapted Opera packaging project demonstrating the expected project structure:
-```
-CI_ll_com.opera.browser/
-├── pak_linyaps.sh          # Main packaging script
-├── scripts/                # Helper scripts
-│   ├── dedup_desktop_files.sh
-│   ├── handle_special_paths.sh
-│   └── validate_bin_nesting.sh
-└── templates/
-    ├── linglong.yaml       # linyaps manifest template
-    └── files_res/          # Desktop files, icons, etc.
-```
-
-### CI_ll_com.visualstudio.code
-
-A fully adapted VS Code packaging project with similar structure, including `appdata.xml`, `bash-completion`, and `zsh` completions.
-
----
-
 ## Troubleshooting
 
 ### "找不到項目目錄" (Project directory not found)
@@ -365,13 +402,13 @@ The script looks for project directories under `projects_root` in this order:
 
 The URL contains architecture keywords that contradict the declared `arch` field.
 
-**Solution**: Verify the `arch` field in your task file matches the actual package architecture. Check `arch_mapping.json` for supported mappings.
+**Solution**: Verify the `arch` field in your task file matches the actual package architecture. Check `skills/config/arch_mapping.json` for supported mappings.
 
 ### "無法從 URL 提取版本號" (Cannot extract version from URL)
 
 The `orig_version` field is empty and the URL doesn't match any known version pattern.
 
-**Solution**: Explicitly set `orig_version` in your task file, or add a new pattern to `version_extract_examples` in your JSON task file.
+**Solution**: Explicitly set `orig_version` in your task file, or add a new pattern to `version_extract_examples` in `agent-config.json`.
 
 ### "CSV 缺少必要欄位" (CSV missing required columns)
 
@@ -389,8 +426,9 @@ Some URLs (e.g., VS Code's `update.code.visualstudio.com/latest/...`) require re
 
 ## Notes
 
-- **`--build_tmp_dir` support is not universal**: The script auto-detects whether a project's `pak_linyaps.sh` supports this parameter by searching for the `build_tmp_dir` keyword. If unsupported, the parameter is silently omitted.
+- **`--build_tmp_dir` support is not universal**: The script auto-detects whether a project's `pak_linyaps.sh` supports this parameter. If unsupported, the parameter is silently omitted.
 - **Execution permissions**: Ensure `pak_linyaps.sh` scripts have execute permission (`chmod +x`).
 - **UTF-8 encoding**: CSV files must be UTF-8 encoded. Both simplified and traditional Chinese headers are supported.
 - **Concurrent execution**: Tasks run sequentially. For parallel execution, split your task file and run multiple instances with separate `output_dir` and `build_tmp_dir` values.
-- **Backward compatibility**: `csv_to_json.sh` transparently handles JSON files by passing them directly to `run_tasks.sh`, so you can use it as a single entry point for both formats.
+- **Backward compatibility**: `csv_to_json.sh` transparently handles JSON files as a single unified entry point.
+- **Symbolic link setup**: When using this repo as an opencode skill, set up `.opencode/` symlinks as described in `REFACTOR-PLAN.md`.

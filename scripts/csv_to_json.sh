@@ -3,13 +3,14 @@
 # 用法: ./csv_to_json.sh <task.csv|task.json> [options]
 #
 # CSV 欄位映射:
-#   包名 → pkgName | 下載地址 → src_url | 架構 → arch | 版本 → orig_version
+#   包名 → pkgName | 下載地址 → src_url | 架構 → arch | 版本 → orig_version | 類型 → type
 #
 # 選項:
 #   --projects_root=<path>   項目根目錄 (預設: ./projects)
 #   --output_dir=<path>      輸出目錄 (預設: ./output)
 #   --build_tmp_dir=<path>   構建緩存目錄 (預設: 自動生成)
 #   --src_dir=<path>         原始資源目錄 (預設: ./src)
+#   --type=<binary|source>   預設任務類型 (預設: binary)
 #   --config=<config.json>   JSON 配置文件 (僅含 global 部分)
 #   --output=<file.json>     輸出 JSON 文件
 #   --dry-run                僅生成 JSON，不執行打包
@@ -58,12 +59,14 @@ CSV 欄位映射:
   版本        → orig_version (可選，為空時從 URL 自動提取)
   網站地址    (忽略，僅供參考)
   下載地址    → src_url
+  類型        → type (可選，binary/source，為空時使用 --type 預設值)
 
 選項:
   --projects_root=<path>   項目根目錄 (預設: ./projects)
   --output_dir=<path>      輸出目錄 (預設: ./output)
   --build_tmp_dir=<path>   構建緩存目錄 (預設: 自動生成)
   --src_dir=<path>         原始資源目錄 (預設: ./src)
+  --type=<binary|source>   預設任務類型 (預設: binary)
   --config=<config.json>   JSON 配置文件 (僅含 global 部分)
   --output=<file.json>     輸出 JSON 文件 (預設: /tmp/linyaps_tasks_<timestamp>.json)
   --dry-run                僅生成 JSON，不執行打包
@@ -98,6 +101,7 @@ SRC_DIR="$DEFAULT_SRC_DIR"
 CONFIG_FILE=""
 OUTPUT_JSON=""
 DRY_RUN=false
+DEFAULT_TASK_TYPE="binary"
 
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -126,6 +130,9 @@ parse_args() {
                 ;;
             --dry-run)
                 DRY_RUN=true
+                ;;
+            --type=*)
+                DEFAULT_TASK_TYPE="${1#*=}"
                 ;;
             -*)
                 log_err "未知選項: $1"
@@ -222,6 +229,7 @@ csv_to_json() {
     local output_dir="$3"
     local build_tmp_dir="$4"
     local src_dir="$5"
+    local default_type="$6"
 
     python3 -c "
 import csv, json, sys
@@ -231,6 +239,7 @@ projects_root = sys.argv[2]
 output_dir = sys.argv[3]
 build_tmp_dir = sys.argv[4]
 src_dir = sys.argv[5]
+default_type = sys.argv[6]
 
 # 讀取 CSV
 rows = []
@@ -250,6 +259,7 @@ col_aliases = {
     '下载地址': ['下载地址', '下載地址', 'download_url', 'src_url'],
     '架构': ['架构', '架構', 'arch'],
     '版本': ['版本', 'version'],
+    '类型': ['类型', '類型', 'type'],
 }
 def find_col(row_keys, aliases):
     for alias in aliases:
@@ -272,6 +282,7 @@ if missing:
     sys.exit(1)
 
 version_col = find_col(header, col_aliases['版本'])
+type_col = find_col(header, col_aliases['类型'])
 
 # 映射欄位
 tasks = []
@@ -280,6 +291,7 @@ for row in rows:
     src_url = row.get(download_col, '').strip()
     arch = row.get(arch_col, '').strip()
     orig_version = row.get(version_col, '').strip() if version_col else ''
+    task_type = row.get(type_col, '').strip() if type_col else ''
 
     # 跳過空行或缺少必要欄位的行
     if not pkg_name or not src_url:
@@ -296,6 +308,9 @@ for row in rows:
     else:
         task['orig_version'] = ''
 
+    # 類型：CSV 欄位優先，無值時使用預設值
+    task['type'] = task_type if task_type else default_type
+
     tasks.append(task)
 
 # 組裝完整 JSON
@@ -310,7 +325,7 @@ result = {
 }
 
 print(json.dumps(result, indent=2, ensure_ascii=False))
-" "$csv_file" "$projects_root" "$output_dir" "$build_tmp_dir" "$src_dir"
+" "$csv_file" "$projects_root" "$output_dir" "$build_tmp_dir" "$src_dir" "$default_type"
 }
 
 # ============================================================
@@ -357,7 +372,7 @@ main() {
     # CSV 轉 JSON
     log_info "解析 CSV 文件..."
     local json_content
-    json_content=$(csv_to_json "$INPUT_FILE" "$PROJECTS_ROOT" "$OUTPUT_DIR" "$BUILD_TMP_DIR" "$SRC_DIR") || {
+    json_content=$(csv_to_json "$INPUT_FILE" "$PROJECTS_ROOT" "$OUTPUT_DIR" "$BUILD_TMP_DIR" "$SRC_DIR" "$DEFAULT_TASK_TYPE") || {
         log_err "CSV 解析失敗"
         exit 1
     }
