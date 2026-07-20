@@ -1,3 +1,0 @@
-记录ID,包名,架构,版本,网站地址,下载地址
-1cea051c-40fc-499a-8def-47d05ec9125c,com.jetbrains.www.pycharm,x86_64,2026.1.2,https://data.services.jetbrains.com/products/releases?code=PC,https://rustfsadmin.cicd2.getdeepin.org/linyaps/com.jetbrains.www.pycharm_x86_64_2026.1.2.tar.gz
-c7c2946f-b2b6-47fa-b3d8-a18e3d4dfe51,org.mozilla.firefox-nal,x86_64,151.0.2,https://www.firefox.com/zh-CN/,https://rustfsadmin.cicd2.getdeepin.org/linyaps/org.mozilla.firefox-nal_x86_64_151.0.2.tar.xz
